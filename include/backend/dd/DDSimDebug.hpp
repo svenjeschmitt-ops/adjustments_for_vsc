@@ -483,6 +483,8 @@ Result ddsimGetAmplitudeBitstring(SimulationState* self, const char* bitstring,
  */
 Result ddsimGetClassicalVariable(SimulationState* self, const char* name,
                                  Variable* output);
+Result ddsimSetClassicalVariable(SimulationState* self, const char* name,
+                                 VariableType type, VariableValue value);
 
 /**
  * @brief Gets the number of classical variables in the simulation.

@@ -31,6 +31,7 @@ from .reverse_continue_dap_message import ReverseContinueDAPMessage
 from .scopes_dap_message import ScopesDAPMessage
 from .set_breakpoints_dap_message import SetBreakpointsDAPMessage
 from .set_exception_breakpoints_dap_message import SetExceptionBreakpointsDAPMessage
+from .set_variable_dap_message import SetVariableDAPMessage
 from .stack_trace_dap_message import StackTraceDAPMessage
 from .step_back_dap_message import StepBackDAPMessage
 from .step_in_dap_message import StepInDAPMessage
@@ -66,6 +67,7 @@ __all__ = [
     "ScopesDAPMessage",
     "SetBreakpointsDAPMessage",
     "SetExceptionBreakpointsDAPMessage",
+    "SetVariableDAPMessage",
     "StackTraceDAPMessage",
     "StepBackDAPMessage",
     "StepInDAPMessage",

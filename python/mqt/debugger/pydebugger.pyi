@@ -307,6 +307,15 @@ class SimulationState:
             Variable: The fetched variable.
         """
 
+    def set_classical_variable(self, name: str, type: VariableType, value: VariableValue) -> None:
+        """Sets the value of a classical variable.
+
+        Args:
+            name (str): The name of the variable to update.
+            type (VariableType): The type of the new value.
+            value (VariableValue): The value to assign to the variable.
+        """
+
     def get_num_classical_variables(self) -> int:
         """Gets the number of classical variables in the simulation.
 

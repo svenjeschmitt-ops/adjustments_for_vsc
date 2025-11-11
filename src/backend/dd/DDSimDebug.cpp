@@ -536,6 +536,7 @@ Result createDDSimulationState(DDSimulationState* self) {
   self->interface.getAmplitudeIndex = ddsimGetAmplitudeIndex;
   self->interface.getAmplitudeBitstring = ddsimGetAmplitudeBitstring;
   self->interface.getClassicalVariable = ddsimGetClassicalVariable;
+  self->interface.setClassicalVariable = ddsimSetClassicalVariable;
   self->interface.getNumClassicalVariables = ddsimGetNumClassicalVariables;
   self->interface.getQuantumVariableName = ddsimGetQuantumVariableName;
   self->interface.getClassicalVariableName = ddsimGetClassicalVariableName;
@@ -1145,6 +1146,20 @@ Result ddsimGetClassicalVariable(SimulationState* self, const char* name,
     return OK;
   }
   return ERROR;
+}
+
+Result ddsimSetClassicalVariable(SimulationState* self, const char* name,
+                                 VariableType type, VariableValue value) {
+  auto* ddsim = toDDSimulationState(self);
+  if (!ddsim->variables.contains(name)) {
+    return ERROR;
+  }
+  auto& variable = ddsim->variables[name];
+  if (variable.type != type) {
+    return ERROR;
+  }
+  variable.value = value;
+  return OK;
 }
 size_t ddsimGetNumClassicalVariables(SimulationState* self) {
   auto* ddsim = toDDSimulationState(self);

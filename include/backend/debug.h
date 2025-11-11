@@ -279,6 +279,18 @@ struct SimulationStateStruct {
                                  Variable* output);
 
   /**
+   * @brief Sets the value of a classical variable.
+   *
+   * @param self The instance to update.
+   * @param name The name of the variable to update.
+   * @param type The type of the value that is being written.
+   * @param value The new value to assign to the variable.
+   * @return The result of the operation.
+   */
+  Result (*setClassicalVariable)(SimulationState* self, const char* name,
+                                 VariableType type, VariableValue value);
+
+  /**
    * @brief Gets the number of classical variables in the simulation.
    *
    * For registers, each index is counted as a separate variable.

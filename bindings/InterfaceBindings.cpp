@@ -44,9 +44,9 @@ namespace {
  * @param result The result to check.
  */
 void checkOrThrow(Result result) {
-  //if (result != OK) {
-  //  throw std::runtime_error("An error occurred while executing the operation");
-  //}
+  if (result != OK) {
+    throw std::runtime_error("An error occurred while executing the operation");
+  }
 }
 
 } // namespace
@@ -404,6 +404,18 @@ Args:
 
 Returns:
     Variable: The fetched variable.)")
+      .def(
+          "set_classical_variable",
+          [](SimulationState* self, const char* name, VariableType type,
+             VariableValue value) {
+            checkOrThrow(self->setClassicalVariable(self, name, type, value));
+          },
+          R"(Sets the value of a classical variable.
+
+Args:
+    name (str): The name of the variable to update.
+    type (VariableType): The type of the provided value.
+    value (VariableValue): The value to assign to the variable.)")
       .def(
           "get_num_classical_variables",
           [](SimulationState* self) {

@@ -252,3 +252,19 @@ def test_classical_get(simulation_instance_classical: SimulationInstance) -> Non
     first = simulation_state.get_classical_variable("c[0]").value.bool_value
     assert simulation_state.get_classical_variable("c[1]").value.bool_value == first
     assert simulation_state.get_classical_variable("c[2]").value.bool_value == first
+
+
+def test_classical_set(simulation_instance_classical: SimulationInstance) -> None:
+    """Tests that classical variables can be updated through the bindings."""
+    (simulation_state, _state_id) = simulation_instance_classical
+    simulation_state.run_all()
+
+    value = mqt.debugger.VariableValue()
+    value.bool_value = True
+    simulation_state.set_classical_variable("c[0]", mqt.debugger.VariableType.VarBool, value)
+    assert simulation_state.get_classical_variable("c[0]").value.bool_value is True
+
+    second_value = mqt.debugger.VariableValue()
+    second_value.bool_value = False
+    simulation_state.set_classical_variable("c[1]", mqt.debugger.VariableType.VarBool, second_value)
+    assert simulation_state.get_classical_variable("c[1]").value.bool_value is False
