@@ -21,6 +21,8 @@
 #include "common.h"
 
 #include <algorithm>
+#include <array>
+#include <optional>
 #include <cstddef>
 #include <cstdint>
 #include <pybind11/cast.h>
@@ -43,10 +45,85 @@ namespace {
  * otherwise.
  * @param result The result to check.
  */
-void checkOrThrow(Result result) {
-  //if (result != OK) {
-  //  throw std::runtime_error("An error occurred while executing the operation");
-  //}
+void checkOrThrow(Result result, SimulationState* state = nullptr) {
+  if (result == OK) {
+    return;
+  }
+  std::string errorMessage = "An error occurred while executing the operation";
+  if (state != nullptr && state->getLastError != nullptr) {
+    std::array<char, 1024> buffer{};
+    if (state->getLastError(state, buffer.data(), buffer.size()) == OK &&
+        buffer[0] != '\0') {
+      errorMessage = buffer.data();
+    }
+  }
+  throw std::runtime_error(errorMessage);
+}
+
+void checkOrShow(Result result, SimulationState* state = nullptr) {
+  if (result == OK) {
+    return;
+  }
+  std::string errorMessage =
+      "An error occurred while executing the operation";
+  bool hasDetailedMessage = false;
+  if (state != nullptr && state->getLastError != nullptr) {
+    std::array<char, 1024> buffer{};
+    if (state->getLastError(state, buffer.data(), buffer.size()) == OK &&
+        buffer[0] != '\0') {
+      errorMessage = buffer.data();
+      hasDetailedMessage = true;
+    }
+  }
+  if (!hasDetailedMessage && state != nullptr &&
+      state->didAssertionFail != nullptr &&
+      state->didAssertionFail(state)) {
+    errorMessage = "An assertion in the simulated program failed.";
+    hasDetailedMessage = true;
+    if (state->getDiagnostics != nullptr) {
+      Diagnostics* diagnostics = state->getDiagnostics(state);
+      if (diagnostics != nullptr &&
+          diagnostics->potentialErrorCauses != nullptr) {
+        constexpr size_t maxCauses = 4U;
+        std::array<ErrorCause, maxCauses> causes{};
+        const size_t found =
+            diagnostics->potentialErrorCauses(diagnostics, causes.data(),
+                                              causes.size());
+        if (found > 0) {
+          const auto describeCause = [](ErrorCauseType type) -> const char* {
+            switch (type) {
+            case MissingInteraction:
+              return "Missing interaction between dependent qubits";
+            case ControlAlwaysZero:
+              return "Controlled gate with a control qubit that never becomes 1";
+            case Unknown:
+            default:
+              return "Unknown issue";
+            }
+          };
+          errorMessage += " Possible cause: ";
+          errorMessage += describeCause(causes[0].type);
+          errorMessage += " around instruction ";
+          errorMessage += std::to_string(causes[0].instruction);
+          if (found > 1) {
+            errorMessage += " (";
+            errorMessage += std::to_string(found - 1);
+            errorMessage += " additional potential issue";
+            if (found - 1 > 1) {
+              errorMessage += "s";
+            }
+            errorMessage += ").";
+          } else {
+            errorMessage += ".";
+          }
+        } else {
+          errorMessage +=
+              " Diagnostics did not report a specific root cause.";
+        }
+      }
+    }
+  }
+  throw std::runtime_error(errorMessage);
 }
 
 } // namespace
@@ -167,51 +244,55 @@ Args:
 
   py::class_<SimulationState>(m, "SimulationState")
       .def(py::init<>(), "Creates a new `SimulationState` instance.")
-      .def(
-          "init", [](SimulationState* self) { checkOrThrow(self->init(self)); },
-          "Initializes the simulation state.")
+      .def("init",
+           [](SimulationState* self) { checkOrThrow(self->init(self), self); },
+           "Initializes the simulation state.")
       .def(
           "load_code",
           [](SimulationState* self, const char* code) {
-            checkOrThrow(self->loadCode(self, code));
+            checkOrShow(self->loadCode(self, code), self);
           },
-          R"(Loads the given code into the simulation state.
+          R"(Loads the given code into the simulation state.")
 
 Args:
     code (str): The code to load.)")
       .def(
           "step_forward",
-          [](SimulationState* self) { checkOrThrow(self->stepForward(self)); },
+          [](SimulationState* self) {
+            checkOrThrow(self->stepForward(self), self);
+          },
           "Steps the simulation forward by one instruction.")
       .def(
           "step_over_forward",
           [](SimulationState* self) {
-            checkOrThrow(self->stepOverForward(self));
+            checkOrThrow(self->stepOverForward(self), self);
           },
           "Steps the simulation forward by one instruction, skipping over "
           "possible custom gate calls.")
       .def(
           "step_out_forward",
           [](SimulationState* self) {
-            checkOrThrow(self->stepOutForward(self));
+            checkOrThrow(self->stepOutForward(self), self);
           },
           "Steps the simulation forward until the current custom gate call "
           "returns.")
       .def(
           "step_backward",
-          [](SimulationState* self) { checkOrThrow(self->stepBackward(self)); },
+          [](SimulationState* self) {
+            checkOrThrow(self->stepBackward(self), self);
+          },
           "Steps the simulation backward by one instruction.")
       .def(
           "step_over_backward",
           [](SimulationState* self) {
-            checkOrThrow(self->stepOverBackward(self));
+            checkOrThrow(self->stepOverBackward(self), self);
           },
           "Steps the simulation backward by one instruction, skipping over "
           "possible custom gate calls.")
       .def(
           "step_out_backward",
           [](SimulationState* self) {
-            checkOrThrow(self->stepOutBackward(self));
+            checkOrThrow(self->stepOutBackward(self), self);
           },
           "Steps the simulation backward until the instruction calling the "
           "current custom gate is encountered.")
@@ -219,7 +300,7 @@ Args:
           "run_all",
           [](SimulationState* self) {
             size_t errors = 0;
-            checkOrThrow(self->runAll(self, &errors));
+            checkOrThrow(self->runAll(self, &errors), self);
             return errors;
           },
           R"(Runs the simulation until it finishes, even if assertions fail.
@@ -229,7 +310,7 @@ int: The number of assertions that failed during execution.)")
       .def(
           "run_simulation",
           [](SimulationState* self) {
-            checkOrThrow(self->runSimulation(self));
+            checkOrThrow(self->runSimulation(self), self);
           },
           R"(Runs the simulation until it finishes or an assertion fails.
 
@@ -238,14 +319,14 @@ method will return `True`.)")
       .def(
           "run_simulation_backward",
           [](SimulationState* self) {
-            checkOrThrow(self->runSimulationBackward(self));
+            checkOrThrow(self->runSimulationBackward(self), self);
           },
           "Runs the simulation backward until it finishes or an assertion "
           "fails.")
       .def(
           "reset_simulation",
           [](SimulationState* self) {
-            checkOrThrow(self->resetSimulation(self));
+            checkOrThrow(self->resetSimulation(self), self);
           },
           R"(Resets the simulation to the initial state.
 
@@ -254,7 +335,7 @@ start of the code.)")
       .def(
           "pause_simulation",
           [](SimulationState* self) {
-            checkOrThrow(self->pauseSimulation(self));
+            checkOrThrow(self->pauseSimulation(self), self);
           },
           R"(Pauses the simulation.
 
@@ -287,7 +368,8 @@ bool: is giving back the new state of the classical bit variable.)")
       .def(
           "change_classical_value",
           [](SimulationState* self, const std::string& variableName) {
-            checkOrThrow(self->changeClassicalVariable(self, variableName.c_str()));
+            checkOrThrow(self->changeClassicalVariable(self, variableName.c_str()),
+                         self);
           },
           R"(Changes the value of the given classical bit variable to its opposite value.
 
@@ -296,7 +378,9 @@ Args:
       .def(
           "change_amplitude_value",
           [](SimulationState* self, const std::string& basisState, const Complex& value) {
-            checkOrThrow(self->changeAmplitudeVariable(self, basisState.c_str(), &value));
+            checkOrThrow(
+                self->changeAmplitudeVariable(self, basisState.c_str(), &value),
+                self);
           },
           R"(Sets the amplitude of the given computational basis state.
 
@@ -335,6 +419,20 @@ be set to false again.
 
 Returns:
 bool: True, if a breakpoint was hit during the last step.)")
+      .def(
+          "get_last_error",
+          [](SimulationState* self) -> std::optional<std::string> {
+            if (self->getLastError == nullptr) {
+              return std::nullopt;
+            }
+            std::array<char, 1024> buffer{};
+            if (self->getLastError(self, buffer.data(), buffer.size()) == OK &&
+                buffer[0] != '\0') {
+              return std::string(buffer.data());
+            }
+            return std::nullopt;
+          },
+          R"(Returns the message of the most recent error, if available.)")
       .def(
           "get_current_instruction",
           [](SimulationState* self) {
@@ -380,7 +478,7 @@ Returns:
           "get_amplitude_index",
           [](SimulationState* self, size_t qubit) {
             Complex output;
-            checkOrThrow(self->getAmplitudeIndex(self, qubit, &output));
+            checkOrThrow(self->getAmplitudeIndex(self, qubit, &output), self);
             return output;
           },
           R"(Gets the complex amplitude of a state in the full state vector.
@@ -397,7 +495,8 @@ Returns:
           "get_amplitude_bitstring",
           [](SimulationState* self, const char* bitstring) {
             Complex output;
-            checkOrThrow(self->getAmplitudeBitstring(self, bitstring, &output));
+            checkOrThrow(self->getAmplitudeBitstring(self, bitstring, &output),
+                         self);
             return output;
           },
           R"(Gets the complex amplitude of a state in the full state vector.
@@ -413,7 +512,8 @@ Returns:
           "get_classical_variable",
           [](SimulationState* self, const char* name) {
             Variable output;
-            checkOrThrow(self->getClassicalVariable(self, name, &output));
+            checkOrThrow(self->getClassicalVariable(self, name, &output),
+                         self);
             return output;
           },
           R"(Gets a classical variable by name.
@@ -441,8 +541,9 @@ Returns:
           "get_classical_variable_name",
           [](SimulationState* self, size_t variableIndex) {
             std::string output(255, '\0');
-            checkOrThrow(self->getClassicalVariableName(self, variableIndex,
-                                                        output.data()));
+            checkOrThrow(
+                self->getClassicalVariableName(self, variableIndex, output.data()),
+                self);
             const std::size_t pos = output.find_first_of('\0');
             if (pos != std::string::npos) {
               output = output.substr(0, pos);
@@ -464,8 +565,9 @@ Returns:
           "get_quantum_variable_name",
           [](SimulationState* self, size_t variableIndex) {
             std::string output(255, '\0');
-            checkOrThrow(self->getQuantumVariableName(self, variableIndex,
-                                                      output.data()));
+            checkOrThrow(
+                self->getQuantumVariableName(self, variableIndex, output.data()),
+                self);
             const std::size_t pos = output.find_first_of('\0');
             if (pos != std::string::npos) {
               output = output.substr(0, pos);
@@ -494,7 +596,7 @@ Returns:
             Statevector output{.numQubits = numQubits,
                                .numStates = result.numStates,
                                .amplitudes = result.amplitudes.data()};
-            checkOrThrow(self->getStateVectorFull(self, &output));
+            checkOrThrow(self->getStateVectorFull(self, &output), self);
             return result;
           },
           R"(Gets the full state vector of the simulation at the current time.
@@ -516,7 +618,8 @@ Returns:
                                .numStates = result.numStates,
                                .amplitudes = result.amplitudes.data()};
             checkOrThrow(self->getStateVectorSub(self, numQubits, qubits.data(),
-                                                 &output));
+                                                 &output),
+                         self);
             return result;
           },
           R"(Gets a sub-state of the state vector of the simulation at the current time.
@@ -537,7 +640,8 @@ Returns:
           [](SimulationState* self, size_t desiredPosition) {
             size_t actualPosition = 0;
             checkOrThrow(
-                self->setBreakpoint(self, desiredPosition, &actualPosition));
+                self->setBreakpoint(self, desiredPosition, &actualPosition),
+                self);
             return actualPosition;
           },
           R"(Sets a breakpoint at the desired position in the code.
@@ -553,14 +657,14 @@ Returns:
       .def(
           "clear_breakpoints",
           [](SimulationState* self) {
-            checkOrThrow(self->clearBreakpoints(self));
+            checkOrThrow(self->clearBreakpoints(self), self);
           },
           "Clears all breakpoints set in the simulation.")
       .def(
           "get_stack_depth",
           [](SimulationState* self) {
             size_t depth = 0;
-            checkOrThrow(self->getStackDepth(self, &depth));
+            checkOrThrow(self->getStackDepth(self, &depth), self);
             return depth;
           },
           R"(Gets the current stack depth of the simulation.
@@ -573,11 +677,11 @@ Returns:
           "get_stack_trace",
           [](SimulationState* self, size_t maxDepth) {
             size_t trueSize = 0;
-            checkOrThrow(self->getStackDepth(self, &trueSize));
+            checkOrThrow(self->getStackDepth(self, &trueSize), self);
             const size_t stackSize = std::min(maxDepth, trueSize);
             std::vector<size_t> stackTrace(stackSize);
             checkOrThrow(
-                self->getStackTrace(self, maxDepth, stackTrace.data()));
+                self->getStackTrace(self, maxDepth, stackTrace.data()), self);
             return stackTrace;
           },
           R"(Gets the current stack trace of the simulation.
