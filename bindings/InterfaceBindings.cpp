@@ -57,74 +57,13 @@ void checkOrThrow(Result result, SimulationState* state = nullptr) {
       errorMessage = buffer.data();
     }
   }
+  if (const auto snippet = buildHighlightedContext(state)) {
+    errorMessage += *snippet;
+  }
   throw std::runtime_error(errorMessage);
 }
 
-void checkOrShow(Result result, SimulationState* state = nullptr) {
-  if (result == OK) {
-    return;
-  }
-  std::string errorMessage =
-      "An error occurred while executing the operation";
-  bool hasDetailedMessage = false;
-  if (state != nullptr && state->getLastError != nullptr) {
-    std::array<char, 1024> buffer{};
-    if (state->getLastError(state, buffer.data(), buffer.size()) == OK &&
-        buffer[0] != '\0') {
-      errorMessage = buffer.data();
-      hasDetailedMessage = true;
-    }
-  }
-  if (!hasDetailedMessage && state != nullptr &&
-      state->didAssertionFail != nullptr &&
-      state->didAssertionFail(state)) {
-    errorMessage = "An assertion in the simulated program failed.";
-    hasDetailedMessage = true;
-    if (state->getDiagnostics != nullptr) {
-      Diagnostics* diagnostics = state->getDiagnostics(state);
-      if (diagnostics != nullptr &&
-          diagnostics->potentialErrorCauses != nullptr) {
-        constexpr size_t maxCauses = 4U;
-        std::array<ErrorCause, maxCauses> causes{};
-        const size_t found =
-            diagnostics->potentialErrorCauses(diagnostics, causes.data(),
-                                              causes.size());
-        if (found > 0) {
-          const auto describeCause = [](ErrorCauseType type) -> const char* {
-            switch (type) {
-            case MissingInteraction:
-              return "Missing interaction between dependent qubits";
-            case ControlAlwaysZero:
-              return "Controlled gate with a control qubit that never becomes 1";
-            case Unknown:
-            default:
-              return "Unknown issue";
-            }
-          };
-          errorMessage += " Possible cause: ";
-          errorMessage += describeCause(causes[0].type);
-          errorMessage += " around instruction ";
-          errorMessage += std::to_string(causes[0].instruction);
-          if (found > 1) {
-            errorMessage += " (";
-            errorMessage += std::to_string(found - 1);
-            errorMessage += " additional potential issue";
-            if (found - 1 > 1) {
-              errorMessage += "s";
-            }
-            errorMessage += ").";
-          } else {
-            errorMessage += ".";
-          }
-        } else {
-          errorMessage +=
-              " Diagnostics did not report a specific root cause.";
-        }
-      }
-    }
-  }
-  throw std::runtime_error(errorMessage);
-}
+
 
 } // namespace
 

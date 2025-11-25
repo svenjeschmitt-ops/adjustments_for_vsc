@@ -24,6 +24,8 @@
 
 using namespace mqt::debugger;
 
+void forgetLoadedCode(SimulationState* state);
+
 void bindBackend(pybind11::module& m) {
 
   m.def(
@@ -42,6 +44,7 @@ Returns:
   m.def(
       "destroy_ddsim_simulation_state",
       [](SimulationState* state) {
+        forgetLoadedCode(state);
         // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
         destroyDDSimulationState(reinterpret_cast<DDSimulationState*>(state));
         // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
