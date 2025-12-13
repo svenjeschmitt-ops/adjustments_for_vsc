@@ -286,7 +286,7 @@ The simulation is unable to step backward if it is at the beginning or if
 the simulation has not been set up yet.
 
 Returns:
-    bool: True if the simulation can step backward.)")
+bool: True, if the simulation can step backward.)")
       .def(
           "change_classical_variable_value",
           [](SimulationState* self, const std::string& variableName,
@@ -320,7 +320,7 @@ Args:
           },
           R"(Sets the amplitude of the given computational basis state.
 
-The basis state must be provided as a bitstring (e.g., ``"010"``) whose length
+The basis state must be provided as a bitstring (e.g., `010`) whose length
 matches the number of qubits in the circuit. The simulator rescales the
 remaining amplitudes to keep the state normalized. Attempts to set amplitudes
 that violate normalization, target out-of-range states, or use invalid
