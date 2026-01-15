@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
- * Copyright (c) 2025 Munich Quantum Software Company GmbH
+ * Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+ * Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
  * All rights reserved.
  *
  * SPDX-License-Identifier: MIT
@@ -119,6 +119,18 @@ struct DDSimulationState {
    * @brief The code being executed, after preprocessing.
    */
   std::string processedCode;
+  /**
+   * @brief The last error message produced by the interface.
+   */
+  std::string lastErrorMessage;
+  /**
+   * @brief The last load error message without location prefixes.
+   */
+  std::string lastLoadErrorDetail;
+  /**
+   * @brief The last load result produced by the interface.
+   */
+  LoadResult lastLoadResult;
   /**
    * @brief Indicates whether the debugger is ready to start simulation.
    */
@@ -280,6 +292,13 @@ Result ddsimInit(SimulationState* self);
  * @return The result of the operation.
  */
 Result ddsimLoadCode(SimulationState* self, const char* code);
+/**
+ * @brief Loads the given code into the simulation state and returns details.
+ * @param self The instance to load the code into.
+ * @param code The code to load.
+ * @return The result of the load operation.
+ */
+LoadResult ddsimLoadCodeWithResult(SimulationState* self, const char* code);
 /**
  * @brief Steps the simulation forward by one instruction.
  * @param self The instance to step forward.

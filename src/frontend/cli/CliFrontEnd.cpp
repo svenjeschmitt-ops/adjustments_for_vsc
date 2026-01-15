@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
- * Copyright (c) 2025 Munich Quantum Software Company GmbH
+ * Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+ * Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
  * All rights reserved.
  *
  * SPDX-License-Identifier: MIT
@@ -69,7 +69,15 @@ void CliFrontEnd::run(const char* code, SimulationState* state) {
   const auto result = state->loadCode(state, code);
   state->resetSimulation(state);
   if (result == ERROR) {
-    std::cout << "Error loading code\n";
+    const char* message = nullptr;
+    if (state->getLastErrorMessage != nullptr) {
+      message = state->getLastErrorMessage(state);
+    }
+    if (message != nullptr && *message != '\0') {
+      std::cout << "Error loading code: " << message << "\n";
+    } else {
+      std::cout << "Error loading code\n";
+    }
     return;
   }
 

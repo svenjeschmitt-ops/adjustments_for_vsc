@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
- * Copyright (c) 2025 Munich Quantum Software Company GmbH
+ * Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+ * Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
  * All rights reserved.
  *
  * SPDX-License-Identifier: MIT
@@ -23,10 +23,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <pybind11/cast.h>
 #include <pybind11/detail/common.h>
-#include <pybind11/iostream.h>
 #include <pybind11/native_enum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
@@ -67,6 +65,14 @@ struct StatevectorCPP {
 };
 
 void bindFramework(py::module& m) {
+  // Bind the Result enum
+  py::native_enum<Result>(m, "Result", "enum.Enum",
+                          "Represents the result of an operation.")
+      .value("OK", OK, "Indicates that the operation was successful.")
+      .value("ERROR", ERROR, "Indicates that an error occurred.")
+      .export_values()
+      .finalize();
+
   // Bind the VariableType enum
   py::native_enum<VariableType>(m, "VariableType", "enum.Enum",
                                 "The type of a classical variable.")
@@ -168,6 +174,20 @@ Args:
       .doc() =
       "The settings that should be used to compile an assertion program.";
 
+  py::class_<LoadResult>(m, "LoadResult")
+      .def(py::init<>(), "Creates a new `LoadResult` instance.")
+      .def_readwrite("status", &LoadResult::status,
+                     "The result status of the load operation.")
+      .def_readwrite("line", &LoadResult::line,
+                     "The line number of the error location, or 0 if unknown.")
+      .def_readwrite(
+          "column", &LoadResult::column,
+          "The column number of the error location, or 0 if unknown.")
+      .def_readwrite(
+          "message", &LoadResult::message,
+          "A human-readable error message, or None if none is available.")
+      .doc() = "Represents the result of loading code.";
+
   py::class_<SimulationState>(m, "SimulationState")
       .def(py::init<>(), "Creates a new `SimulationState` instance.")
       .def(
@@ -176,15 +196,12 @@ Args:
       .def(
           "load_code",
           [](SimulationState* self, const char* code) {
-            py::module io = py::module::import("io");
-            py::object string_io = io.attr("StringIO")();
-            Result result = OK;
-            {
-              py::scoped_ostream_redirect redirect(std::cerr, string_io);
-              result = self->loadCode(self, code);
-            }
+            const Result result = self->loadCode(self, code);
             if (result != OK) {
-              auto message = string_io.attr("getvalue")().cast<std::string>();
+              const char* messagePtr = self->getLastErrorMessage
+                                           ? self->getLastErrorMessage(self)
+                                           : nullptr;
+              std::string message = messagePtr ? messagePtr : "";
               if (message.empty()) {
                 message = "An error occurred while executing the operation";
               }
@@ -195,6 +212,29 @@ Args:
 
 Args:
     code (str): The code to load.)")
+      .def(
+          "load_code_with_result",
+          [](SimulationState* self, const char* code) {
+            if (self->loadCodeWithResult != nullptr) {
+              return self->loadCodeWithResult(self, code);
+            }
+            LoadResult result{OK, 0, 0, nullptr};
+            const Result status = self->loadCode(self, code);
+            result.status = status;
+            if (status != OK) {
+              result.message = self->getLastErrorMessage
+                                   ? self->getLastErrorMessage(self)
+                                   : nullptr;
+            }
+            return result;
+          },
+          R"(Loads the given code and returns details about any errors.
+
+Args:
+    code (str): The code to load.
+
+Returns:
+    LoadResult: The result of the load operation.)")
       .def(
           "step_forward",
           [](SimulationState* self) { checkOrThrow(self->stepForward(self)); },

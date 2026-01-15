@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
- * Copyright (c) 2025 Munich Quantum Software Company GmbH
+ * Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+ * Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
  * All rights reserved.
  *
  * SPDX-License-Identifier: MIT
@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <exception>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -34,12 +35,17 @@ namespace mqt::debugger {
 
 namespace {
 
+/**
+ * @brief Check whether a string is non-empty and contains only digits.
+ * @param text The string to validate.
+ * @return True if the string is non-empty and all characters are digits.
+ */
 bool isDigits(const std::string& text) {
   if (text.empty()) {
     return false;
   }
-  return std::all_of(text.begin(), text.end(),
-                     [](unsigned char c) { return std::isdigit(c) != 0; });
+  return std::ranges::all_of(
+      text, [](unsigned char c) { return std::isdigit(c) != 0; });
 }
 
 struct LineColumn {
@@ -47,6 +53,12 @@ struct LineColumn {
   size_t column = 1;
 };
 
+/**
+ * @brief Compute the 1-based line and column for a given character offset.
+ * @param code The source code to inspect.
+ * @param offset The zero-based character offset in the source code.
+ * @return The line and column of the offset in the source code.
+ */
 LineColumn lineColumnForOffset(const std::string& code, size_t offset) {
   LineColumn location;
   const auto lineStartPos = code.rfind('\n', offset);
@@ -63,6 +75,13 @@ LineColumn lineColumnForOffset(const std::string& code, size_t offset) {
   return location;
 }
 
+/**
+ * @brief Compute the 1-based line and column for a target within a line.
+ * @param code The source code to inspect.
+ * @param instructionStart The zero-based offset of the instruction start.
+ * @param target The target token to locate on the line.
+ * @return The line and column of the target, or the first non-space column.
+ */
 LineColumn lineColumnForTarget(const std::string& code, size_t instructionStart,
                                const std::string& target) {
   LineColumn location = lineColumnForOffset(code, instructionStart);
@@ -89,6 +108,14 @@ LineColumn lineColumnForTarget(const std::string& code, size_t instructionStart,
   return location;
 }
 
+/**
+ * @brief Format a parse error with line/column location information.
+ * @param code The source code to inspect.
+ * @param instructionStart The zero-based offset of the instruction start.
+ * @param detail The error detail text.
+ * @param target Optional target token to locate more precisely.
+ * @return The formatted error string.
+ */
 std::string formatParseError(const std::string& code, size_t instructionStart,
                              const std::string& detail,
                              const std::string& target = "") {
@@ -97,6 +124,42 @@ std::string formatParseError(const std::string& code, size_t instructionStart,
          std::to_string(location.column) + ": " + detail;
 }
 
+/**
+ * @brief Build an error detail string for an invalid target.
+ * @param target The invalid target token.
+ * @param context Additional context to append.
+ * @return The formatted detail string.
+ */
+std::string invalidTargetDetail(const std::string& target,
+                                const std::string& context) {
+  std::string detail = "Invalid target qubit ";
+  detail += target;
+  detail += context;
+  detail += ".";
+  return detail;
+}
+
+/**
+ * @brief Build an error detail string for an invalid register declaration.
+ * @param trimmedLine The register declaration line.
+ * @return The formatted detail string.
+ */
+std::string invalidRegisterDetail(const std::string& trimmedLine) {
+  std::string detail = "Invalid register declaration ";
+  detail += trimmedLine;
+  detail += ".";
+  return detail;
+}
+
+/**
+ * @brief Validate target references against known registers and indices.
+ * @param code The source code to inspect.
+ * @param instructionStart The zero-based offset of the instruction start.
+ * @param targets The target tokens to validate.
+ * @param definedRegisters The registers defined in the current scope.
+ * @param shadowedRegisters The shadowed register names in the current scope.
+ * @param context Additional context to append to error messages.
+ */
 void validateTargets(const std::string& code, size_t instructionStart,
                      const std::vector<std::string>& targets,
                      const std::map<std::string, size_t>& definedRegisters,
@@ -112,24 +175,24 @@ void validateTargets(const std::string& code, size_t instructionStart,
     }
     const auto close = target.find(']', open + 1);
     if (open == 0 || close == std::string::npos || close != target.size() - 1) {
-      throw ParsingError(formatParseError(
-          code, instructionStart,
-          "Invalid target qubit " + target + context + ".", target));
+      throw ParsingError(formatParseError(code, instructionStart,
+                                          invalidTargetDetail(target, context),
+                                          target));
     }
     const auto registerName = target.substr(0, open);
     const auto indexText = target.substr(open + 1, close - open - 1);
     if (!isDigits(indexText)) {
-      throw ParsingError(formatParseError(
-          code, instructionStart,
-          "Invalid target qubit " + target + context + ".", target));
+      throw ParsingError(formatParseError(code, instructionStart,
+                                          invalidTargetDetail(target, context),
+                                          target));
     }
     size_t registerIndex = 0;
     try {
       registerIndex = std::stoul(indexText);
     } catch (const std::exception&) {
-      throw ParsingError(formatParseError(
-          code, instructionStart,
-          "Invalid target qubit " + target + context + ".", target));
+      throw ParsingError(formatParseError(code, instructionStart,
+                                          invalidTargetDetail(target, context),
+                                          target));
     }
     if (std::ranges::find(shadowedRegisters, registerName) !=
         shadowedRegisters.end()) {
@@ -137,9 +200,9 @@ void validateTargets(const std::string& code, size_t instructionStart,
     }
     const auto found = definedRegisters.find(registerName);
     if (found == definedRegisters.end() || found->second <= registerIndex) {
-      throw ParsingError(formatParseError(
-          code, instructionStart,
-          "Invalid target qubit " + target + context + ".", target));
+      throw ParsingError(formatParseError(code, instructionStart,
+                                          invalidTargetDetail(target, context),
+                                          target));
     }
   }
 }
@@ -475,17 +538,15 @@ preprocessCode(const std::string& code, size_t startIndex,
       const auto& name = parts[0];
       const auto sizeText = parts.size() > 1 ? parts[1] : "";
       if (name.empty() || !isDigits(sizeText)) {
-        throw ParsingError(formatParseError(code, trueStart,
-                                            "Invalid register declaration " +
-                                                trimmedLine + "."));
+        throw ParsingError(formatParseError(
+            code, trueStart, invalidRegisterDetail(trimmedLine)));
       }
       size_t size = 0;
       try {
         size = std::stoul(sizeText);
       } catch (const std::exception&) {
-        throw ParsingError(formatParseError(code, trueStart,
-                                            "Invalid register declaration " +
-                                                trimmedLine + "."));
+        throw ParsingError(formatParseError(
+            code, trueStart, invalidRegisterDetail(trimmedLine)));
       }
       definedRegisters.insert({name, size});
     }

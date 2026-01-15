@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
- * Copyright (c) 2025 Munich Quantum Software Company GmbH
+ * Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+ * Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
  * All rights reserved.
  *
  * SPDX-License-Identifier: MIT
@@ -41,6 +41,28 @@ typedef enum {
    */
   ERROR,
 } Result;
+
+/**
+ * @brief The result of a code loading operation.
+ */
+typedef struct {
+  /**
+   * @brief Indicates whether the load was successful.
+   */
+  Result status;
+  /**
+   * @brief The line number of the error location, or 0 if unknown.
+   */
+  size_t line;
+  /**
+   * @brief The column number of the error location, or 0 if unknown.
+   */
+  size_t column;
+  /**
+   * @brief A human-readable error message, or nullptr if none is available.
+   */
+  const char* message;
+} LoadResult;
 
 /**
  * @brief The type of classical variables.

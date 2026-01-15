@@ -1,5 +1,5 @@
-# Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
-# Copyright (c) 2025 Munich Quantum Software Company GmbH
+# Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+# Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
 # All rights reserved.
 #
 # SPDX-License-Identifier: MIT
@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import json
-import re
 import socket
 import sys
 from typing import TYPE_CHECKING, Any
@@ -190,6 +189,11 @@ class DAPServer:
                 e = mqt.debugger.dap.messages.InitializedDAPEvent()
                 event_payload = json.dumps(e.encode())
                 send_message(event_payload, connection)
+            if isinstance(
+                cmd, (mqt.debugger.dap.messages.LaunchDAPMessage, mqt.debugger.dap.messages.RestartDAPMessage)
+            ):
+                clear_event = mqt.debugger.dap.messages.GrayOutDAPEvent([], self.source_file)
+                send_message(json.dumps(clear_event.encode()), connection)
             if (
                 isinstance(
                     cmd, (mqt.debugger.dap.messages.LaunchDAPMessage, mqt.debugger.dap.messages.RestartDAPMessage)
@@ -354,7 +358,7 @@ class DAPServer:
             connection,
             "stderr",
         )
-        highlight_entries = self.collect_highlight_entries(current_instruction)
+        highlight_entries = self.collect_highlight_entries(current_instruction, error_causes)
         if highlight_entries:
             highlight_event = mqt.debugger.dap.messages.HighlightError(highlight_entries, self.source_file)
             send_message(json.dumps(highlight_event.encode()), connection)
@@ -428,13 +432,18 @@ class DAPServer:
             else ""
         )
 
-    def collect_highlight_entries(self, failing_instruction: int) -> list[dict[str, Any]]:
+    def collect_highlight_entries(
+        self,
+        failing_instruction: int,
+        error_causes: list[mqt.debugger.ErrorCause] | None = None,
+    ) -> list[dict[str, Any]]:
         """Collect highlight entries for the current assertion failure."""
         highlights: list[dict[str, Any]] = []
         if getattr(self, "source_code", ""):
             try:
-                diagnostics = self.simulation_state.get_diagnostics()
-                error_causes = diagnostics.potential_error_causes()
+                if error_causes is None:
+                    diagnostics = self.simulation_state.get_diagnostics()
+                    error_causes = diagnostics.potential_error_causes()
             except RuntimeError:
                 error_causes = []
 
@@ -448,7 +457,7 @@ class DAPServer:
         if not highlights:
             entry = self._build_highlight_entry(
                 failing_instruction,
-                "assertionFailed",
+                mqt.debugger.dap.messages.HighlightReason.ASSERTION_FAILED,
                 "Assertion failed at this instruction.",
             )
             if entry is not None:
@@ -456,14 +465,22 @@ class DAPServer:
 
         return highlights
 
-    def _build_highlight_entry(self, instruction: int, reason: str, message: str) -> dict[str, Any] | None:
+    def _build_highlight_entry(
+        self,
+        instruction: int,
+        reason: mqt.debugger.dap.messages.HighlightReason,
+        message: str,
+    ) -> dict[str, Any] | None:
         """Create a highlight entry for a specific instruction."""
         try:
             start_pos, end_pos = self.simulation_state.get_instruction_position(instruction)
         except RuntimeError:
             return None
         start_line, start_column = self.code_pos_to_coordinates(start_pos)
-        end_position_exclusive = min(len(self.source_code), end_pos + 1)
+        if end_pos < len(self.source_code) and self.source_code[end_pos] == "\n":
+            end_position_exclusive = end_pos
+        else:
+            end_position_exclusive = min(len(self.source_code), end_pos + 1)
         end_line, end_column = self.code_pos_to_coordinates(end_position_exclusive)
         snippet = self.source_code[start_pos : end_pos + 1].replace("\r", "")
         return {
@@ -478,34 +495,32 @@ class DAPServer:
         }
 
     @staticmethod
-    def _format_highlight_reason(cause_type: mqt.debugger.ErrorCauseType | None) -> str:
+    def _format_highlight_reason(
+        cause_type: mqt.debugger.ErrorCauseType | None,
+    ) -> mqt.debugger.dap.messages.HighlightReason:
         """Return a short identifier for the highlight reason."""
         if cause_type == mqt.debugger.ErrorCauseType.MissingInteraction:
-            return "missingInteraction"
+            return mqt.debugger.dap.messages.HighlightReason.MISSING_INTERACTION
         if cause_type == mqt.debugger.ErrorCauseType.ControlAlwaysZero:
-            return "controlAlwaysZero"
-        return "unknown"
+            return mqt.debugger.dap.messages.HighlightReason.CONTROL_ALWAYS_ZERO
+        return mqt.debugger.dap.messages.HighlightReason.UNKNOWN
 
-    def queue_parse_error(self, error_message: str) -> None:
+    def queue_parse_error(
+        self,
+        error_message: str,
+        line: int | None = None,
+        column: int | None = None,
+    ) -> None:
         """Store highlight data for a parse error to be emitted later."""
-        line, column, detail = self._parse_error_location(error_message)
+        detail = error_message.strip()
+        if not detail:
+            detail = "An error occurred while parsing the code."
+        if line is None or column is None:
+            line = 1
+            column = 1
         entry = self._build_parse_error_highlight(line, column, detail)
         if entry is not None:
             self.pending_highlights = [entry]
-
-    @staticmethod
-    def _parse_error_location(error_message: str) -> tuple[int, int, str]:
-        """Parse a compiler error string and extract the source location."""
-        match = re.match(r"<input>:(\d+):(\d+):\s*(.*)", error_message.strip())
-        if match:
-            line = int(match.group(1))
-            column = int(match.group(2))
-            detail = match.group(3).strip()
-        else:
-            line = 1
-            column = 1
-            detail = error_message.strip()
-        return (line, column, detail)
 
     def _build_parse_error_highlight(self, line: int, column: int, detail: str) -> dict[str, Any] | None:
         """Create a highlight entry for a parse error."""
@@ -538,7 +553,7 @@ class DAPServer:
                 "start": {"line": line, "column": column},
                 "end": {"line": line, "column": end_column if end_column > 0 else column},
             },
-            "reason": "parseError",
+            "reason": mqt.debugger.dap.messages.HighlightReason.PARSE_ERROR,
             "code": snippet,
             "message": detail,
         }
@@ -636,21 +651,3 @@ class DAPServer:
             self.source_file,
         )
         send_message(json.dumps(event.encode()), connection)
-
-    def send_state(self, connection: socket.socket) -> None:
-        """Send the state of the current execution to the client.
-
-        Args:
-            connection (socket.socket): The client socket.
-        """
-        output_lines = []
-        if self.simulation_state.did_assertion_fail():
-            output_lines.append("Assertion failed")
-        if self.simulation_state.was_breakpoint_hit():
-            output_lines.append("Breakpoint hit")
-        if self.simulation_state.is_finished():
-            output_lines.append("Finished")
-        if not output_lines:
-            output_lines.append("Running")
-        for line_text in output_lines:
-            self.send_message_simple(line_text, None, None, 0, 0, connection)

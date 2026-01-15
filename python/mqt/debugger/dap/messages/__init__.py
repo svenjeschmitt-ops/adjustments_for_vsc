@@ -1,5 +1,5 @@
-# Copyright (c) 2024 - 2025 Chair for Design Automation, TUM
-# Copyright (c) 2025 Munich Quantum Software Company GmbH
+# Copyright (c) 2024 - 2026 Chair for Design Automation, TUM
+# Copyright (c) 2025 - 2026 Munich Quantum Software Company GmbH
 # All rights reserved.
 #
 # SPDX-License-Identifier: MIT
@@ -16,12 +16,12 @@ from .change_bit_dap_message import BitChangeDAPMessage
 from .configuration_done_dap_message import ConfigurationDoneDAPMessage
 from .continue_dap_message import ContinueDAPMessage
 from .dap_event import DAPEvent
-from .dap_message import DAPMessage
+from .dap_message import DAPMessage, Request
 from .disconnect_dap_message import DisconnectDAPMessage
 from .exception_info_message import ExceptionInfoDAPMessage
 from .exited_dap_event import ExitedDAPEvent
 from .gray_out_event import GrayOutDAPEvent
-from .highlight_error_dap_message import HighlightError
+from .highlight_error_dap_message import HighlightError, HighlightReason
 from .initialize_dap_message import InitializeDAPMessage
 from .initialized_dap_event import InitializedDAPEvent
 from .launch_dap_message import LaunchDAPMessage
@@ -44,8 +44,6 @@ from .terminated_dap_event import TerminatedDAPEvent
 from .threads_dap_message import ThreadsDAPMessage
 from .variables_dap_message import VariablesDAPMessage
 
-Request = DAPMessage
-
 __all__ = [
     "AmplitudeChangeDAPMessage",
     "BitChangeDAPMessage",
@@ -59,6 +57,7 @@ __all__ = [
     "ExitedDAPEvent",
     "GrayOutDAPEvent",
     "HighlightError",
+    "HighlightReason",
     "InitializeDAPMessage",
     "InitializedDAPEvent",
     "LaunchDAPMessage",
